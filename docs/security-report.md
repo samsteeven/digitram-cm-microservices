@@ -39,28 +39,220 @@
 
 #### Rôles et périmètres
 
-| Rôle AWS | Utilisateur | Droits | Principe |
-|----------|-------------|--------|----------|
-| **AdminCloud** | Administrateur DevOps | `AdministratorAccess` (limité à vie courte via STS) | Accès total mais temporaire (MFA + session 1h) |
-| **DevOps** | Ingénieur CI/CD | ECR push/pull, ECS update-service, CloudWatch logs, S3 read/write sur buckets dev | Déploiement uniquement, pas de modification RDS/Redis en prod |
-| **Dev** | Développeur | ECR pull, CloudWatch logs read, S3 read sur buckets dev, EC2 describe | Lecture seule sur la prod, écriture limitée au dev |
-| **BI-Analyst** | Analyste métier | RDS read-only sur `bi_db`, S3 read sur bucket analytics, QuickSight | Pas de modification, pas d'accès aux bases métier (ERP/CRM) |
-| **AgentTerrain** | Mobile app | `execute-api` sur API Gateway, aucun accès AWS console | Uniquement appel API, jamais de clé AWS directe |
+| Rôle AWS | Utilisateur | Périmètre | Principe |
+|----------|-------------|-----------|----------|
+| **AdminCloud** | RSSI / Chef de projet | Accès total mais temporaire via STS (MFA + session 1h max) | Break-glass account, utilisé uniquement pour les opérations critiques |
+| **DevOps** | Ingénieur CI/CD | ECR, ECS, CloudWatch Logs, S3 (buckets dev), déclencheur pipelines | Déploiement uniquement, pas de modification RDS/Redis/Secrets Manager en prod |
+| **Dev** | Développeur back-end | ECR pull, CloudWatch logs read, S3 read (dev), EC2 describe, ECS describe | Lecture seule en prod, écriture limitée au dev |
+| **BI-Analyst** | Analyste métier | RDS read-only sur `bi_db`, S3 read sur bucket analytics, QuickSight | Zéro modification, pas d'accès aux bases ERP/CRM |
+| **AgentTerrain** | Application mobile | `execute-api` sur API Gateway uniquement | Aucune clé AWS directe, authentification via JWT uniquement |
 
-#### Politique `Deny` explicite (Safety Net)
+#### Politiques IAM détaillées
+
+##### Rôle `DevOps`
 
 ```json
 {
-  "Effect": "Deny",
-  "Action": ["rds:DeleteDBInstance", "s3:DeleteBucket", "iam:DeleteRole"],
-  "Resource": "*",
-  "Condition": {
-    "StringNotEquals": { "aws:PrincipalARN": "arn:aws:iam::*:role/AdminCloud" }
-  }
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRPushPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:PutImage"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ECSUpdate",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:UpdateService",
+        "ecs:DescribeServices",
+        "ecs:DescribeTaskDefinition",
+        "ecs:RegisterTaskDefinition",
+        "ecs:ListTasks",
+        "ecs:DescribeTasks"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatchRead",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents",
+        "cloudwatch:GetMetricData",
+        "cloudwatch:DescribeAlarms"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3DevReadWrite",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::digitrans-dev-*", "arn:aws:s3:::digitrans-dev-*/*"]
+    },
+    {
+      "Sid": "DenyProdModify",
+      "Effect": "Deny",
+      "Action": [
+        "rds:ModifyDBInstance",
+        "rds:DeleteDBInstance",
+        "elasticache:ModifyReplicationGroup",
+        "elasticache:DeleteReplicationGroup",
+        "iam:DeleteRole",
+        "iam:PutRolePolicy"
+      ],
+      "Resource": "*"
+    }
+  ]
 }
 ```
 
-Seul `AdminCloud` peut supprimer des ressources critiques.
+##### Rôle `Dev`
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ECRPull",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudWatchRead",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3DevRead",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::digitrans-dev-*", "arn:aws:s3:::digitrans-dev-*/*"]
+    },
+    {
+      "Sid": "ReadOnlyInfra",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs",
+        "ecs:DescribeServices",
+        "ecs:DescribeTaskDefinition",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "ecs:ListTasks",
+        "rds:DescribeDBInstances",
+        "elasticache:DescribeReplicationGroups"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyAllWrite",
+      "Effect": "Deny",
+      "Action": [
+        "ecs:UpdateService",
+        "ecs:RegisterTaskDefinition",
+        "rds:ModifyDBInstance",
+        "rds:DeleteDBInstance",
+        "iam:*",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+##### Rôle `BI-Analyst`
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "RDSPostgreSQLReadOnly",
+      "Effect": "Allow",
+      "Action": ["rds:DescribeDBInstances"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3AnalyticsRead",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::digitrans-analytics-*", "arn:aws:s3:::digitrans-analytics-*/*"]
+    },
+    {
+      "Sid": "QuickSightAccess",
+      "Effect": "Allow",
+      "Action": ["quicksight:DescribeDashboard", "quicksight:ListDashboards", "quicksight:GetDashboardEmbedUrl"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyNonBI",
+      "Effect": "Deny",
+      "Action": [
+        "ecs:*",
+        "ec2:*",
+        "iam:*",
+        "lambda:*",
+        "ecr:*",
+        "elasticache:*",
+        "rds:ModifyDBInstance",
+        "rds:DeleteDBInstance",
+        "rds:CreateDBInstance"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+##### Politique `Deny` globale (Safety Net — appliquée à tous)
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SafetyNet",
+      "Effect": "Deny",
+      "Action": ["rds:DeleteDBInstance", "s3:DeleteBucket", "iam:DeleteRole", "organizations:LeaveOrganization"],
+      "Resource": "*",
+      "Condition": {
+        "StringNotEquals": {
+          "aws:PrincipalARN": "arn:aws:iam::495234635866:role/AdminCloud"
+        }
+      }
+    }
+  ]
+}
+```
 
 ### 4. Procédure de gestion des droits au départ d'un développeur
 
@@ -177,13 +369,61 @@ aws ecs wait services-stable --cluster digitrans-cluster --services erp-service 
 
 #### Notification des parties prenantes
 
-| Partie prenante | Canal | Délai | Information |
-|----------------|-------|-------|-------------|
-| RSSI | Email + Téléphone | Immédiat | Nature, impact, actions en cours |
-| DPO | Email | < 24h | Si données personnelles impliquées |
-| CNPD (Cameroun) | Email officiel | < 72h | Conformité loi n°2010/012 |
-| Clients impactés | Email | < 7j | Si données clients compromises |
-| Assureur cyber | Email | < 30j | Pour activation garantie |
+| Partie prenante | Canal | Délai | Information à transmettre |
+|----------------|-------|-------|---------------------------|
+| RSSI | Email + Téléphone | Immédiat | Nature de l'incident, services impactés, premières actions |
+| DPO | Email | < 24h | Données personnelles éventuellement compromises |
+| **CNPD (Cameroun)** | Email officiel | **< 72h** (loi n°2010/012 art. 45) | Voir template ci-dessous |
+| Clients impactés | Email | < 7j | Nature, risques, mesures prises |
+| Assureur cyber | Email | < 30j | Rapport d'incident complet |
+
+#### Template de notification CNPD (délai légal : 72h)
+
+```
+OBJET : Notification d'incident de sécurité — DIGITRANS-CM — AGROCAM S.A.
+
+À l'attention de la Commission Nationale pour la Protection des Données (CNPD)
+Yaoundé, Cameroun
+
+--- 1. Description de l'incident ---
+Date et heure de détection :   [JJ/MM/AAAA HH:MM]
+Nature de l'incident :         [ ] Fuite de données
+                                [ ] Accès non autorisé
+                                [ ] Déni de service
+                                [ ] Perte d'intégrité
+                                [ ] Autre : _______________
+Systèmes impactés :            [RDS / S3 / ECS / Blockchain Fabric / API Gateway]
+Volume de données :            [Nombre d'enregistrements / Taille estimée]
+
+--- 2. Catégories de données concernées ---
+[ ] Données personnelles (nom, email, téléphone)
+[ ] Données financières (salaires, transactions)
+[ ] Données de santé
+[ ] Données de traçabilité (loi n°2010/012)
+[ ] Identifiants techniques (logs, tokens)
+[ ] Aucune donnée personnelle
+
+--- 3. Mesures prises ---
+Contenance :                   [Désactivation des accès, blocage réseau, snapshot]
+Notification en interne :      [RSSI / DPO informé le JJ/MM/AAAA à HH:MM]
+Correction :                   [Rotation des secrets / correctif déployé / nouveau certificat]
+
+--- 4. Contacts ---
+RSSI :                         [Nom, téléphone, email]
+DPO :                          [Nom, téléphone, email]
+Responsable juridique :        [Nom, téléphone, email]
+
+--- 5. Pièces jointes ---
+[ ] Journal d'audit CloudTrail
+[ ] Logs applicatifs
+[ ] Rapport d'analyse forensique (si disponible)
+
+Nous restons à votre disposition pour tout complément d'information.
+
+Signature : _________________
+Fonction : RSSI — AGROCAM S.A.
+Date :     JJ/MM/AAAA
+```
 
 ### 7. Chiffrement des données
 
@@ -207,42 +447,63 @@ aws ecs wait services-stable --cluster digitrans-cluster --services erp-service 
 
 ### 8. Guide de bonnes pratiques sécurité Cloud
 
-#### Principes fondamentaux
+Ce guide est adapté au contexte spécifique d'AGROCAM S.A. au Cameroun : contraintes de connectivité (coupures fréquentes à Douala), exigences de souveraineté des données (loi n°2010/012), et besoin de traçabilité blockchain.
 
-1. **Moindre privilège IAM**
-   - Jamais de clé IAM root, jamais de `*` dans une politique (sauf Deny)
-   - Utiliser des rôles (pas des utilisateurs) pour les applications
-   - `terraform/modules/iam/main.tf` applique ce principe
+#### 1. Moindre privilège IAM — Contexte AGROCAM
 
-2. **Network segmentation**
-   - Subnets privés pour les bases de données (pas d'IP publique)
-   - Security Groups : ALB↔ECS↔RDS/Redis, pas d'0.0.0.0/0 entrant
-   - `terraform/modules/security/main.tf`
+**Pratique :** Chaque utilisateur AWS reçoit uniquement les permissions nécessaires à son rôle. Les politiques Deny explicites protègent les ressources critiques.
 
-3. **Patch management**
-   - ECS Fargate = pas de gestion OS
-   - RDS : activer les mises à jour mineures automatiques
-   - Images Docker : rebuild hebdomadaire avec `docker build --no-cache`
+**Pourquoi c'est vital pour AGROCAM :** Avec 3 développeurs et des stagiaires, le risque d'erreur humaine est élevé. Un développeur avec des droits admin pourrait supprimer la base de production par inadvertance. Les politiques JSON détaillées (section 3) empêchent cela : un développeur ne peut PAS `rds:DeleteDBInstance`, seul AdminCloud le peut.
 
-4. **Audit et logs**
-   - CloudTrail activé sur tous les comptes AWS
-   - CloudWatch Logs avec rétention : 90j prod, 30j dev/test
-   - Logs d'accès ALB activés
+**Preuve :** `terraform/modules/iam/main.tf` — la politique `ecs_task_role` et `ecs_exec_role` appliquent le moindre privilège.
 
-5. **Secrets management**
-   - Jamais de mot de passe en clair dans le code
-   - Utiliser AWS Secrets Manager (rotation automatique)
-   - `.env` jamais commité (`.gitignore` + `.env.example`)
+#### 2. Network segmentation — Isolement des données camerounaises
 
-6. **Backup et DRP**
-   - RDS : backup automatique 30j + snapshot manuel avant chaque déploiement
-   - S3 : versioning activé
-   - State Terraform sur S3 + DynamoDB (lock)
+**Pratique :** Subnets privés pour toutes les bases de données, Security Groups avec règle de moindre accès (ALB → ECS → RDS/Redis). Aucun service n'a d'IP publique sauf l'ALB.
 
-7. **Sécurité humaine**
-   - Validation des pull requests par un pair (4 eyes principle)
-   - Formation sécurité annuelle pour tous les développeurs
-   - Pas de `console.log` en production (vérifié par ESLint)
+**Pourquoi c'est vital pour AGROCAM :** La loi camerounaise n°2010/012 exige que les données des citoyens restent sur le territoire. Le réseau privé AWS (VPC) garantit qu'aucune donnée ne transite par l'internet public entre les services. Les SGs empêchent tout accès non autorisé aux bases.
+
+**Preuve :** `terraform/modules/security/main.tf` — SGs avec règles entrantes limitées aux sous-réseaux privés et aux services autorisés.
+
+#### 3. Patch management — Résilience face aux coupures
+
+**Pratique :** ECS Fargate élimine la gestion OS (AWS patch automatiquement). RDS reçoit les mises à jour mineures automatiquement. Les images Docker sont rebuildées chaque semaine.
+
+**Pourquoi c'est vital pour AGROCAM :** Les coupures réseau à Douala peuvent empêcher les mises à jour manuelles. Un système qui nécessite une connexion internet pour patcher est vulnérable. Fargate et RDS sont patchés par AWS sans intervention humaine. En mode offline, les agents terrain utilisent la queue Redis (sync.worker.js) et synchronisent à la reconnexion — pas besoin de patch pour ça.
+
+**Preuve :** `supply-chain-service/src/sync/sync.worker.js:96-128` — mécanisme offline-first.
+
+#### 4. Audit et logs — Conformité n°2010/012
+
+**Pratique :** CloudTrail activé sur toutes les régions AWS, CloudWatch Logs avec rétention 90 jours (prod) / 30 jours (dev/test), logs d'accès ALB activés, logs Fabric blockchain.
+
+**Pourquoi c'est vital pour AGROCAM :** La loi n°2010/012 exige la traçabilité des accès. Les logs CloudTrail + CloudWatch + Fabric fournissent une piste d'audit complète : qui a accédé à quoi, quand, et depuis où. En cas de contrôle CNPD, AGROCAM peut produire ces logs.
+
+**Preuve :** `terraform/monitoring.tf` — `aws_cloudwatch_log_group`, `aws_cloudwatch_metric_alarm`, `aws_cloudwatch_dashboard`.
+
+#### 5. Secrets management — Protection des accès BDD
+
+**Pratique :** Aucun mot de passe en clair dans le code. AWS Secrets Manager stocke les secrets (db_password, JWT_SECRET) avec rotation automatique. `.env` jamais commité (`.gitignore` + `.env.example`).
+
+**Pourquoi c'est vital pour AGROCAM :** Le code source circule entre 3 développeurs et des stagiaires. Un mot de passe RDS en clair dans un fichier `.env` commité par erreur exposerait toutes les bases de données. Secrets Manager chiffre les secrets (AES-256) et les rotent automatiquement tous les 90 jours.
+
+**Preuve :** `.gitignore` (fichiers `.env` exclus), `terraform/modules/ecs/main.tf:76-93` (variables sensibles passées en environment, lues depuis Secrets Manager).
+
+#### 6. Backup et DRP — Continuité d'activité
+
+**Pratique :** RDS backup automatique 30 jours + snapshot manuel avant chaque déploiement. S3 versioning activé. State Terraform sur S3 avec locking. Plan de reprise documenté dans `docs/drp.md`.
+
+**Pourquoi c'est vital pour AGROCAM :** En cas de sinistre (incendie, inondation à Douala), AGROCAM doit pouvoir restaurer son SI rapidement. RDS Multi-AZ + PITR (Point-In-Time Recovery) permet de revenir à n'importe quel moment des 30 derniers jours. RTO (Recovery Time Objective) cible : 4 heures. RPO (Recovery Point Objective) : 5 minutes.
+
+**Preuve :** `docs/drp.md` — procédures de restauration complètes (RDS, S3, ECR, Terraform).
+
+#### 7. Sécurité humaine et développement
+
+**Pratique :** Validation des pull requests par un pair (4-eyes principle), formation sécurité annuelle, interdiction des `console.log` en production (vérifié par ESLint + CI/CD).
+
+**Pourquoi c'est vital pour AGROCAM :** Les erreurs de sécurité viennent souvent d'une méconnaissance (ex: un développeur expose une API sans auth). Les PR reviews permettent de détecter ces erreurs avant le déploiement. Le linter ESLint (`no-console` sauf `warn`/`error`) empêche la fuite de données debug en production.
+
+**Preuve :** `.eslintrc.json` (règle `no-console`), `.github/workflows/ci-cd.yml:15-23` (étape lint obligatoire).
 
 ---
 
@@ -291,10 +552,36 @@ aws ecs wait services-stable --cluster digitrans-cluster --services erp-service 
 └────────────────────────────────────────────────────────┘
 ```
 
+#### Hachage et Merkle Tree
+
+Hyperledger Fabric utilise **SHA-256** (Secure Hash Algorithm 256 bits) pour garantir l'intégrité :
+
+1. **Lien entre blocs :** Chaque bloc contient le hash SHA-256 du bloc précédent (`Previous Hash`). Si quelqu'un modifie un bloc passé, son hash change, et la chaîne est cassée → détection immédiate.
+
+2. **Merkle Tree (arbre de Merkle) :** Les transactions d'un bloc ne sont pas stockées en clair dans l'en-tête. Elles sont organisées en arbre de Merkle :
+   - Chaque transaction est hashée individuellement (SHA-256)
+   - Les hashs sont groupés par paires et re-hashés
+   - La racine de l'arbre (`Data Hash` dans le header) représente l'ensemble des transactions
+
+```
+        ┌───────────── Root Hash ─────────────┐
+        │                                      │
+   ┌──── Hash(AB) ────┐                 ┌──── Hash(CD) ────┐
+   │                   │                 │                   │
+ Hash(A)             Hash(B)          Hash(C)             Hash(D)
+   │                   │                 │                   │
+ Tx A               Tx B               Tx C               Tx D
+```
+
+**Propriété importante :** Pour vérifier qu'une transaction appartient au bloc, on n'a pas besoin de toutes les transactions — seulement le chemin de hashs jusqu'à la racine (vérification en O(log n)). C'est ce qu'on appelle une **preuve de Merkle**.
+
+3. **Historique Fabric :** `getHistoryForKey()` ne lit pas les blocs un par un. Fabric maintient un index de l'historique de chaque clé. Chaque entrée dans l'historique contient le `txId` de la transaction qui a modifié la clé, permettant de remonter au bloc correspondant.
+
 **Intégrité garantie par :**
-- Chaque bloc contient le `Previous Hash` du bloc précédent (chaîne liée cryptographiquement)
+- **SHA-256** entre les blocs (`Previous Hash` → chaîne liée cryptographiquement)
+- **Merkle Tree** dans chaque bloc (`Data Hash` → intègre toutes les transactions)
+- **Signature Fabric** dans la metadata (endorsements signés par les pairs)
 - L'historique est immuable car modifier un bloc changerait son hash, cassant la chaîne
-- Fabric stocke l'historique de chaque clé via `getHistoryForKey()` — on peut tracer toute modification
 
 **Preuve :** `chaincode/supply-chain-contract.js:59-80` — fonction `updateShipmentStatus` qui enregistre l'historique
 
@@ -332,10 +619,44 @@ La loi n°2010/012 impose la **traçabilité des accès aux systèmes d'informat
 | **Conservation** | Les données blockchain sont immuables par conception, impossible de les modifier a posteriori | Propriété fondamentale de Fabric |
 | **Journal d'accès** | CloudTrail + CloudWatch Logs conservent les accès AWS (console et API) | `terraform/monitoring.tf` |
 
-**Procédure de réponse à une demande CNPD :**
-1. Interroger la blockchain : `getShipmentHistory(id)` → obtient toutes les transactions liées à une expédition
-2. Vérifier les signatures X.509 de chaque transaction → identité du signataire
-3. Cross-vérifier avec les logs CloudTrail (accès AWS) + logs application → traçabilité complète
+#### Procédure formelle de réponse à une demande CNPD
+
+Conformément à la loi n°2010/012 et aux directives de la CNPD, AGROCAM S.A. s'engage à répondre à toute demande d'accès, de rectification ou de justification de traçabilité selon la procédure suivante :
+
+1. **Réception de la demande** — La CNPD adresse une demande écrite (email ou courrier) au DPO d'AGROCAM. Délai de réponse légal : **15 jours ouvrés** (art. 47 de la loi n°2010/012).
+
+2. **Identification du périmètre** — Le DPO détermine :
+   - Quelles expéditions / données sont concernées
+   - Quelle période temporelle
+   - Quel type de données (personnelles, financières, traçabilité)
+
+3. **Extraction des preuves blockchain** — L'équipe technique exécute :
+   ```javascript
+   // Récupération de l'historique complet d'une expédition
+   const history = await contract.evaluateTransaction("getShipmentHistory", shipmentId);
+   // Vérification de l'intégrité de la chaîne
+   const integrity = await contract.evaluateTransaction("verifyChainIntegrity", fromId, toId);
+   ```
+   Résultat : liste de toutes les transactions avec identité du signataire, timestamp, et hash du bloc.
+
+4. **Cross-vérification** — L'équipe rapproche les données blockchain avec :
+   - **CloudTrail** : logs des accès AWS pendant la période concernée
+   - **CloudWatch Logs** : logs applicatifs (API calls, sync offline)
+   - **Sync queue** : enregistrements de synchronisation terrain
+
+5. **Rédaction du rapport** — Le DPO compile un dossier comprenant :
+   - Les données extraites de la blockchain
+   - Les logs CloudTrail associés
+   - La liste des personnes ayant accédé aux données
+   - La justification de la conservation (durée, base légale)
+
+6. **Envoi à la CNPD** — Transmission par email officiel avec accusé de réception dans les délais légaux.
+
+**Fichiers de preuve mobilisables :**
+- `chaincode/supply-chain-contract.js:105-118` — `getShipmentHistory`
+- `chaincode/supply-chain-contract.js:120-138` — `verifyChainIntegrity`
+- `terraform/monitoring.tf` — CloudWatch Logs et métriques
+- `supply-chain-service/src/sync/sync.worker.js:79-83` — table `sync_queue` (audit trail)
 
 ### 5. Smart contract développé
 
@@ -421,6 +742,27 @@ Agent terrain scanne un QR code à un checkpoint → application mobile
 *Problème :* Un débordement d'entier peut transformer `balance = balance - amount` en valeur énorme si `amount > balance` sans vérification.
 
 *Protection mise en place :* Dans notre contrat, les `quantity` sont limitées par `parseFloat` et utilisées uniquement pour l'affichage/déclaration, pas pour des calculs critiques de solde. Le type `DECIMAL(15,2)` en PostgreSQL et le JavaScript `Number` gèrent les bornes. Les validations sont faites côté API (Joi) avant d'atteindre le smart contract.
+
+**3. Time Manipulation (Timestamp Attack)**
+
+*Problème :* Un attaquant peut manipuler le timestamp d'une transaction pour falsifier l'ordre chronologique des événements (ex : déclarer une livraison comme arrivée avant son départ).
+
+*Protection mise en place :* Dans notre contrat (`chaincode/supply-chain-contract.js:24`), le `timestamp` est celui du bloc Fabric, pas celui du client. Fabric garantit que le timestamp est celui de l'orderer (nœud de confiance), pas celui du proposant. De plus, l'historique (`history[]`) enregistre chaque état séquentiellement : impossible d'insérer un état entre deux déjà existants.
+
+**4. Access Control — Fonctions non protégées**
+
+*Problème :* Dans un smart contract, une fonction comme `updateShipmentStatus` pourrait être appelée par n'importe qui si elle n'est pas correctement protégée.
+
+*Protection mise en place :* Notre contrat utilise `ctx.clientIdentity.getID()` pour identifier le signataire de chaque transaction (`chaincode/supply-chain-contract.js:33`). Au niveau Fabric, le contrôle d'accès est double :
+   - **MSP (Membership Service Provider)** : seuls les pairs autorisés par le canal peuvent soumettre des transactions
+   - **Application RBAC** : l'API Gateway (`auth-gateway/src/middleware/auth.middleware.js`) vérifie le rôle JWT avant d'appeler `submitTransaction`
+   - Le chaincode lui-même pourrait implémenter une ACL (ex. : seuls les appartenant à `AgrocamMSP.admin` peuvent créer des expéditions), mais dans cette version, le contrôle est délégué à l'API Gateway (principe de défense en profondeur)
+
+**5. Transaction Replay Attack**
+
+*Problème :* Un attaquant intercepte une transaction valide (ex: "checkpoint passer à Douala") et la rejoue plusieurs fois pour créer de faux enregistrements.
+
+*Protection mise en place :* Fabric intègre nativement un mécanisme anti-replay via le `txId` unique généré pour chaque transaction. De plus, notre contrat vérifie l'existence de l'asset avant création (`_assetExists` à la ligne 85). Côté application, le dédoublonnage par `offline_id` (`sync.worker.js:31-40`) empêche la soumission multiple du même enregistrement.
 
 ### 8. Procédure en cas de clé privée compromise (question situationnelle)
 
@@ -522,6 +864,46 @@ Phase 4 — Post-incident
 ```
 
 **Respect de la loi n°2010/012 :** Les données brutes ne quittent jamais les serveurs camerounais. Seules les données agrégeées et autorisées par le contrat sont partagées via le channel consortium.
+
+#### Conformité RGPD (partenaires européens)
+
+L'extension aux partenaires européens implique la conformité au **Règlement Général sur la Protection des Données (RGPD)** :
+
+| Exigence RGPD | Implémentation dans le consortium |
+|---------------|----------------------------------|
+| **Base légale du transfert** | Les données transférées aux partenaires UE sont limitées aux métadonnées (statut, dates, shipment_ref). Pas de données personnelles. Base légale : intérêt légitime (art. 6.1.f) |
+| **Clauses Contractuelles Types (CCT)** | Un contrat de consortium signé par toutes les parties inclut les CCT de la Commission Européenne pour le transfert de données vers un pays tiers |
+| **DPO** | Chaque organisation nomme un DPO. Le DPO d'AGROCAM coordonne avec les DPO européens |
+| **Privacy Impact Assessment (PIA)** | Une analyse d'impact est réalisée avant le déploiement du canal consortium |
+| **Droit à l'effacement** | La blockchain étant immuable, les données ne peuvent pas être effacées. Solution : les données à caractère personnel ne sont JAMAIS inscrites sur le ledger (uniquement des hashs ou des références). Les données brutes restent dans PostgreSQL (effaçables) |
+| **Notification de violation** | 72h (RGPD art. 33) — compatible avec le délai CNPD |
+
+#### Interopérabilité des MSP (Membership Service Providers)
+
+Chaque organisation du consortium conserve son propre **MSP** :
+
+```
+AGROCAM MSP (Cameroun)
+├── CA Root : AgrocamCA.pem
+├── Admin : admin.agrocam@cert
+├── Peers : peer0.agrocam, peer1.agrocam
+└── Orderer : orderer.agrocam
+
+Partenaire UE MSP (Exportateur)
+├── CA Root : ExporterCA.pem
+├── Admin : admin.exporter@cert
+├── Peers : peer0.exporter
+└── (pas d'orderer — utilise celui d'AGROCAM pour le channel consortium)
+```
+
+**Défis techniques et solutions :**
+
+| Défi | Solution |
+|------|----------|
+| **Union de CAs différentes** | La `configtx.yaml` du canal déclare les deux MSP comme membres du consortium. Chaque MSP valide ses propres certificats |
+| **Révocation intersite** | La CRL (Certificate Revocation List) de chaque CA est diffusée sur le canal via les blocs de configuration Fabric |
+| **Nommage des identités** | Convention : `<role>.<organisation>.<type>` (ex : `admin.agrocam.admin`, `peer0.exporter.peer`) |
+| **Latence intercontinentale** | Les orderers sont répartis (Cameroun + UE). Raft tolère la latence. Timeout de bloc augmenté à 2s (au lieu de 500ms par défaut) |
 
 ---
 
