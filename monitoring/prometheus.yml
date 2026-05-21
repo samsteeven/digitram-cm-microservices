@@ -1,0 +1,68 @@
+# Prometheus — Configuration DIGITRANS-CM
+# Déployé en tant que sidecar ou DaemonSet dans le cluster EKS
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    project: digitrans-cm
+
+# Alertmanager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+# Règles d'alerte
+rule_files:
+  - "alerts/*.yml"
+
+scrape_configs:
+  # Métriques ECS / EKS (via CloudWatch exporter)
+  - job_name: 'aws-cloudwatch'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['cloudwatch-exporter:9106']
+
+  # Health checks des microservices
+  - job_name: 'microservices'
+    metrics_path: '/health'
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - 'auth-gateway.digitrans:3000'
+          - 'erp-service.digitrans:3001'
+          - 'crm-service.digitrans:3002'
+          - 'supply-chain-service.digitrans:3003'
+          - 'bi-service.digitrans:3004'
+        labels:
+          service: 'digitrans'
+
+  # Métriques Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+
+  # Métriques PostgreSQL
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+
+  # Métriques nœuds EKS
+  - job_name: 'kubernetes-nodes'
+    kubernetes_sd_configs:
+      - role: node
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_node_label_kubernetes_io_hostname]
+        target_label: instance
+
+  # Métriques pods EKS
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        target_label: app
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace

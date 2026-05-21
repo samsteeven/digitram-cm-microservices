@@ -1,0 +1,142 @@
+{
+  "dashboardName": "DIGITRANS-CM-${ENVIRONMENT}",
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0, "y": 0, "width": 24, "height": 6,
+      "properties": {
+        "title": "ECS — CPU Utilisation (tous les services)",
+        "view": "timeSeries",
+        "stacked": false,
+        "region": "af-south-1",
+        "metrics": [
+          ["AWS/ECS", "CPUUtilization", { "stat": "Average", "label": "auth-gateway" }],
+          ["AWS/ECS", "CPUUtilization", { "stat": "Average", "label": "erp-service" }],
+          ["AWS/ECS", "CPUUtilization", { "stat": "Average", "label": "crm-service" }],
+          ["AWS/ECS", "CPUUtilization", { "stat": "Average", "label": "supply-chain" }],
+          ["AWS/ECS", "CPUUtilization", { "stat": "Average", "label": "bi-service" }]
+        ],
+        "period": 300,
+        "stat": "Average"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 6, "width": 12, "height": 6,
+      "properties": {
+        "title": "RDS — Connections",
+        "view": "timeSeries",
+        "region": "af-south-1",
+        "metrics": [
+          ["AWS/RDS", "DatabaseConnections", { "label": "Connections" }]
+        ],
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 6, "width": 12, "height": 6,
+      "properties": {
+        "title": "RDS — IOPS",
+        "view": "timeSeries",
+        "region": "af-south-1",
+        "metrics": [
+          ["AWS/RDS", "ReadIOPS", { "label": "Read" }],
+          ["AWS/RDS", "WriteIOPS", { "label": "Write" }]
+        ],
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 12, "width": 12, "height": 6,
+      "properties": {
+        "title": "ALB — Request Count",
+        "view": "timeSeries",
+        "region": "af-south-1",
+        "metrics": [
+          ["AWS/ApplicationELB", "RequestCount", { "label": "Requests" }]
+        ],
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12, "y": 12, "width": 12, "height": 6,
+      "properties": {
+        "title": "ALB — Latence (p99)",
+        "view": "timeSeries",
+        "region": "af-south-1",
+        "metrics": [
+          ["AWS/ApplicationELB", "TargetResponseTime", { "stat": "p99", "label": "p99" }]
+        ],
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 18, "width": 8, "height": 6,
+      "properties": {
+        "title": "Redis — Cache Hits (vs Misses)",
+        "view": "timeSeries",
+        "region": "af-south-1",
+        "metrics": [
+          ["AWS/ElastiCache", "CacheHits", { "label": "Hits" }],
+          ["AWS/ElastiCache", "CacheMisses", { "label": "Misses" }]
+        ],
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 8, "y": 18, "width": 8, "height": 6,
+      "properties": {
+        "title": "ECS — Memory Utilisation",
+        "view": "timeSeries",
+        "region": "af-south-1",
+        "metrics": [
+          ["AWS/ECS", "MemoryUtilization", { "label": "Memory %" }]
+        ],
+        "period": 300
+      }
+    },
+    {
+      "type": "metric",
+      "x": 16, "y": 18, "width": 8, "height": 6,
+      "properties": {
+        "title": "ALB — HTTP Errors (4xx/5xx)",
+        "view": "timeSeries",
+        "region": "af-south-1",
+        "metrics": [
+          ["AWS/ApplicationELB", "HTTPCode_Target_4XX_Count", { "label": "4xx" }],
+          ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", { "label": "5xx" }]
+        ],
+        "period": 300,
+        "stat": "Sum"
+      }
+    },
+    {
+      "type": "log",
+      "x": 0, "y": 24, "width": 24, "height": 6,
+      "properties": {
+        "title": "Logs — Erreurs récentes (tous services)",
+        "region": "af-south-1",
+        "query": "SOURCE '/ecs/digitrans-${ENVIRONMENT}' | fields @timestamp, @logStream, @message\n| filter @message like /error/i\n| sort @timestamp desc\n| limit 20",
+        "view": "table"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 30, "width": 12, "height": 6,
+      "properties": {
+        "title": "Coûts estimés (7 derniers jours)",
+        "view": "timeSeries",
+        "region": "af-south-1",
+        "metrics": [
+          [{ "expression": "SUM(METRICS())", "label": "Coût estimé $", "id": "m1", "period": 86400 }]
+        ],
+        "setPeriodToTimeRange": true
+      }
+    }
+  ]
+}

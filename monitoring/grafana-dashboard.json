@@ -1,0 +1,89 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "title": "DIGITRANS-CM — Supervision",
+  "uid": "digitrans-cm",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "timezone": "Africa/Douala",
+  "tags": ["digitrans-cm", "camtech"],
+  "panels": [
+    {
+      "id": 1,
+      "title": "État des services",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "up{job='microservices'}", "legendFormat": "{{instance}}" }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "values": false, "calcs": ["lastNotNull"] },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "CPU — Taux d'utilisation par service",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        { "expr": "avg(rate(container_cpu_usage_seconds_total{namespace='digitrans'}[5m])) by (pod) * 100", "legendFormat": "{{pod}}" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Mémoire — Utilisation par service",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        { "expr": "avg(container_memory_working_set_bytes{namespace='digitrans'}) by (pod) / 1024 / 1024", "legendFormat": "{{pod}}" }
+      ],
+      "unit": "MB"
+    },
+    {
+      "id": 4,
+      "title": "Redis — Cache Hit Ratio",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100", "legendFormat": "Hit ratio" }
+      ],
+      "unit": "percent",
+      "min": 0,
+      "max": 100
+    },
+    {
+      "id": 5,
+      "title": "PostgreSQL — Connections actives",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 12 },
+      "targets": [
+        { "expr": "pg_stat_activity_count{datname='digitrans_prod'}", "legendFormat": "{{datname}}" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "HTTP — Taux d'erreur (5xx)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 12 },
+      "targets": [
+        { "expr": "sum(rate(nginx_http_requests_total{status=~'5..'}[5m])) / sum(rate(nginx_http_requests_total[5m])) * 100", "legendFormat": "5xx %" }
+      ],
+      "unit": "percent"
+    },
+    {
+      "id": 7,
+      "title": "Logs récents — ERREURS",
+      "type": "logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "targets": [
+        { "expr": "{namespace='digitrans'} |= 'error'", "legendFormat": "" }
+      ]
+    }
+  ]
+}
