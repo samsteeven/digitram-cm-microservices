@@ -1,0 +1,71 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crm-service
+  namespace: digitrans
+  labels:
+    app: crm-service
+    service: crm
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: crm-service
+  template:
+    metadata:
+      labels:
+        app: crm-service
+        service: crm
+    spec:
+      containers:
+        - name: crm-service
+          image: digitrans/crm-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3002
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: digitrans-config
+            - secretRef:
+                name: digitrans-secrets
+          env:
+            - name: PORT
+              value: "3002"
+            - name: DB_NAME
+              value: "crm_db"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "128m"
+              memory: "256Mi"
+            limits:
+              cpu: "256m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crm-service
+  namespace: digitrans
+  labels:
+    app: crm-service
+spec:
+  selector:
+    app: crm-service
+  ports:
+    - protocol: TCP
+      port: 3002
+      targetPort: 3002
+  type: ClusterIP

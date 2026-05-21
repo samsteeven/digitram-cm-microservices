@@ -1,0 +1,71 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bi-service
+  namespace: digitrans
+  labels:
+    app: bi-service
+    service: bi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bi-service
+  template:
+    metadata:
+      labels:
+        app: bi-service
+        service: bi
+    spec:
+      containers:
+        - name: bi-service
+          image: digitrans/bi-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3004
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: digitrans-config
+            - secretRef:
+                name: digitrans-secrets
+          env:
+            - name: PORT
+              value: "3004"
+            - name: DB_NAME
+              value: "bi_db"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3004
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "128m"
+              memory: "256Mi"
+            limits:
+              cpu: "256m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bi-service
+  namespace: digitrans
+  labels:
+    app: bi-service
+spec:
+  selector:
+    app: bi-service
+  ports:
+    - protocol: TCP
+      port: 3004
+      targetPort: 3004
+  type: ClusterIP

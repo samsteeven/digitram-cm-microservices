@@ -1,0 +1,53 @@
+﻿apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: digitrans-ingress
+  namespace: digitrans
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: ""
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+spec:
+  rules:
+    - host: 
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: auth-gateway
+                port:
+                  number: 3000
+          - path: /api/erp
+            pathType: Prefix
+            backend:
+              service:
+                name: erp-service
+                port:
+                  number: 3001
+          - path: /api/crm
+            pathType: Prefix
+            backend:
+              service:
+                name: crm-service
+                port:
+                  number: 3002
+          - path: /api/supply-chain
+            pathType: Prefix
+            backend:
+              service:
+                name: supply-chain-service
+                port:
+                  number: 3003
+          - path: /api/bi
+            pathType: Prefix
+            backend:
+              service:
+                name: bi-service
+                port:
+                  number: 3004

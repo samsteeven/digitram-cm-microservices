@@ -1,0 +1,71 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: supply-chain-service
+  namespace: digitrans
+  labels:
+    app: supply-chain-service
+    service: supply-chain
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: supply-chain-service
+  template:
+    metadata:
+      labels:
+        app: supply-chain-service
+        service: supply-chain
+    spec:
+      containers:
+        - name: supply-chain-service
+          image: digitrans/supply-chain-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3003
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: digitrans-config
+            - secretRef:
+                name: digitrans-secrets
+          env:
+            - name: PORT
+              value: "3003"
+            - name: DB_NAME
+              value: "supply_chain_db"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3003
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "128m"
+              memory: "256Mi"
+            limits:
+              cpu: "256m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: supply-chain-service
+  namespace: digitrans
+  labels:
+    app: supply-chain-service
+spec:
+  selector:
+    app: supply-chain-service
+  ports:
+    - protocol: TCP
+      port: 3003
+      targetPort: 3003
+  type: ClusterIP

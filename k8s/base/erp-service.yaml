@@ -1,0 +1,71 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: erp-service
+  namespace: digitrans
+  labels:
+    app: erp-service
+    service: erp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: erp-service
+  template:
+    metadata:
+      labels:
+        app: erp-service
+        service: erp
+    spec:
+      containers:
+        - name: erp-service
+          image: digitrans/erp-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: digitrans-config
+            - secretRef:
+                name: digitrans-secrets
+          env:
+            - name: PORT
+              value: "3001"
+            - name: DB_NAME
+              value: "erp_db"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "128m"
+              memory: "256Mi"
+            limits:
+              cpu: "256m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: erp-service
+  namespace: digitrans
+  labels:
+    app: erp-service
+spec:
+  selector:
+    app: erp-service
+  ports:
+    - protocol: TCP
+      port: 3001
+      targetPort: 3001
+  type: ClusterIP

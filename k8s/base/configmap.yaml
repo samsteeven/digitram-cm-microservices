@@ -1,0 +1,12 @@
+﻿apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: digitrans-config
+  namespace: digitrans
+data:
+  NODE_ENV: ""
+  DB_HOST: ""
+  DB_PORT: "5432"
+  REDIS_URL: ""
+  AWS_REGION: "af-south-1"
+  SYNC_INTERVAL_MS: "30000"
