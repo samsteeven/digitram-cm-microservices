@@ -267,4 +267,276 @@ Rôle : Notifications proactives. Si un KPI dépasse son seuil, on reçoit une a
 
 ---
 
+## C25 — Implémenter des stratégies de sécurité robustes
+
+### Cr25.1 — Les solutions proposées correspondent aux besoins de sécurité et de réglementation
+
+**Problème :** AGROCAM expose 5 microservices sur AWS, manipule des données sensibles (salaires, clients, production agricole), et doit se conformer à la loi camerounaise n°2010/012 sur la protection des données.
+
+**Analyse des risques Cloud (4 risques identifiés) :**
+
+`Fichier : docs/security-report.md:12-20`
+
+| Risque | Menace | Impact | Solution mise en œuvre |
+|--------|--------|--------|------------------------|
+| **R1 — Fuite de données via API** | Endpoint sans authentification exposant les données ERP/CRM | Vol de données sensibles, amende CNPD | API Gateway injecte X-User-Id, JWT obligatoire, validation Joi/Pydantic |
+| **R2 — Privilèges excessifs IAM** | Développeur avec accès admin complet | Destruction bases prod, vol de secrets | 3 groupes IAM distincts (DevOps/Dev/BI-Analyst) + politiques Deny explicites + Safety Net |
+| **R3 — Clé blockchain compromise** | Agent terrain perd son appareil (clé privée Fabric) | Transactions frauduleuses, rupture traçabilité | Révocation certificat Fabric, mode offline-first Redis, Raft tolère n-1 pannes |
+| **R4 — DDoS sur API Gateway** | Attaque par saturation sur l'ALB public | Indisponibilité des services, perte CA | WAF, rate limiting, auto-scaling ECS, GuardDuty, CloudWatch alarms |
+
+**Modèle de responsabilité partagée AWS :**
+
+`Fichier : docs/security-report.md:24-30`
+
+| Risque | Responsabilité AGROCAM | Responsabilité AWS |
+|--------|-----------------------|-------------------|
+| R1 | Configurer routes API, auth, SGs | Sécuriser réseau physique et hyperviseur |
+| R2 | Définir politiques IAM précises, moindre privilège | Fournir le service IAM, logs CloudTrail |
+| R3 | Gérer certificats Fabric, révocation, hardware wallet | Sécuriser AWS KMS si utilisé pour HSM |
+| R4 | Configurer WAF, rate limiting, auto-scaling | Fournir infrastructure scalable (ALB, Shield, ECS) |
+
+**Conformité réglementaire :**
+
+| Exigence légale (n°2010/012) | Implémentation | Preuve |
+|------------------------------|----------------|--------|
+| Identification des accès | `ctx.clientIdentity.getID()` dans chaque transaction Fabric | `chaincode/supply-chain-contract.js:35` |
+| Horodatage légal | Timestamp du bloc Fabric, pas du client | `chaincode/supply-chain-contract.js:24` |
+| Non-répudiation | Signature Fabric + historique immutable (`getHistoryForKey`) | `chaincode/supply-chain-contract.js:105-118` |
+| Journal d'accès | CloudTrail multi-région + CloudWatch Logs 90 jours | `terraform/monitoring.tf:115-130` |
+| Notification CNPD 72h | Template prêt dans le security report | `docs/security-report.md:380-426` |
+
+**Politique IAM détaillée :**
+
+`Fichier : terraform/modules/iam/main.tf`
+
+| Groupe | Périmètre | Principe |
+|--------|-----------|----------|
+| **DevOps** (l.116-180) | ECR push/pull, ECS update, CloudWatch read, S3 dev R/W | Déploiement uniquement, Deny explicite sur rds:DeleteDBInstance, iam:DeleteRole |
+| **Dev** (l.182-238) | ECR pull, lecture infra (EC2/ECS/RDS decribe), S3 dev read | Lecture seule en prod, Deny sur rds:*, iam:* |
+| **BI-Analyst** (l.240-284) | RDS describe, S3 analytics read, QuickSight | Zéro modification, Deny sur ecs:*, ec2:*, iam:* |
+| **Safety Net** (l.287-308) | Deny global sur rds:DeleteDBInstance, s3:DeleteBucket, iam:DeleteRole | Sauf AdminCloud (condition aws:PrincipalARN) |
+
+**Rotation des clés :**
+
+`Fichier : docs/security-report.md:292-324`
+
+| Clé | Fréquence | Méthode |
+|-----|-----------|---------|
+| `db_password` RDS | 90 jours | AWS Secrets Manager rotation automatique |
+| `JWT_SECRET` | 180 jours | Rotation manuelle + redéploiement ECS |
+| AWS Access Keys (IAM) | 90 jours | Pré-rotation 2 clés |
+| Clés KMS | 365 jours | AWS KMS auto-rotation |
+
+**Plan de réponse aux incidents :**
+
+`Fichier : docs/security-report.md:327-426`
+
+- Classification P1 (< 15min) à P4 (< 48h)
+- Procédure P1 : Détection → Contenance → Éradication → Récupération → Post-mortem
+- Template notification CNPD avec délai légal 72h (loi n°2010/012 art. 45)
+
+### Cr25.2 — Les solutions mises en œuvre sont fonctionnelles
+
+**L'ensemble des solutions de sécurité est implémenté dans Terraform et déployable sur AWS :**
+
+| Solution | Ressource Terraform | Fichier : Ligne | Fonctionnel ? |
+|----------|---------------------|-----------------|---------------|
+| **Security Groups (isolation réseau)** | `aws_security_group` (4 SGs) | `terraform/modules/security/main.tf:1-87` | ✅ ALB→ECS→RDS/Redis, flux entrant bloqué par défaut |
+| **IAM rôles ECS** | `aws_iam_role.ecs_task` + `aws_iam_role.ecs_exec` | `terraform/modules/iam/main.tf:1-113` | ✅ Policies avec moindre privilège |
+| **IAM groupes humains** | `aws_iam_group` (3 groupes) + policies | `terraform/modules/iam/main.tf:115-308` | ✅ DevOps/Dev/BI-Analyst + Safety Net |
+| **KMS key pour RDS** | `aws_kms_key.rds` + `aws_kms_alias.rds` | `terraform/modules/rds/main.tf:1-12` | ✅ `enable_key_rotation = true` |
+| **RDS encryption at rest** | `storage_encrypted = true` + KMS | `terraform/modules/rds/main.tf:40-41` | ✅ AES-256 via KMS |
+| **RDS backup 30 jours** | `backup_retention_period = 30` | `terraform/modules/rds/main.tf:36` | ✅ PITR sur 30 jours |
+| **RDS Multi-AZ** | `multi_az = true` (prod) | `terraform/modules/rds/main.tf:35` | ✅ Failover automatique |
+| **RDS deletion protection** | `deletion_protection = true` (prod) | `terraform/modules/rds/main.tf:42` | ✅ Impossible de supprimer la base par erreur |
+| **CloudTrail multi-région** | `aws_cloudtrail.main` | `terraform/monitoring.tf:115-130` | ✅ Tous les appels API AWS audités, validation activée |
+| **GuardDuty** | `aws_guardduty_detector.main` | `terraform/monitoring.tf:133-140` | ✅ Détection d'intrusions, findings toutes les 15 min |
+| **AWS Config** | `aws_config_configuration_recorder.main` | `terraform/monitoring.tf:143-173` | ✅ Enregistrement de tous les changements de ressources |
+| **CloudWatch Dashboard** | `aws_cloudwatch_dashboard.main` | `terraform/monitoring.tf:2-42` | ✅ Métriques CPU ECS, connexions RDS, latence ALB |
+| **CloudWatch Alarmes** | `aws_cloudwatch_metric_alarm` (×6) | `terraform/monitoring.tf:48-85` | ✅ CPU > 80% 15min, 5xx > 50 en 5min, notification SNS email |
+| **SNS Alerting** | `aws_sns_topic.alarms` + subscription email | `terraform/monitoring.tf:88-98` | ✅ Notification ops@camtech.cm |
+| **S3 logs bucket** | Bucket + policy CloudTrail | `terraform/modules/s3/main.tf` | ✅ Logs CloudTrail centralisés |
+
+**Preuve de fonctionnalité supplémentaire :**
+
+| Élément | Preuve | Détail |
+|---------|--------|--------|
+| **ESLint 0 erreurs** | `.eslintrc.json` + CI/CD | Règle `no-console` sauf `warn/error`, passe en CI avant build |
+| **Tests unitaires 23/23** | `npm test` | 8 auth + 9 erp + 6 supply-chain, avec PostgreSQL et Redis réels |
+| **Ruff OK (Python)** | CI/CD step lint Python | 0 erreurs sur bi-service |
+| **Terraform syntaxe valide** | `terraform validate` | Modules interconnectés, providers AWS + Azure |
+| **Backend S3 + state locking** | `terraform/providers.tf` | Bucket `digitrans-terraform-state`, `use_lockfile`, profil IAM `digitrans-deployer` |
+
+---
+
+## C26 — Intégrer et mettre en œuvre des technologies blockchain
+
+### Cr26.1 — La solution mise en œuvre est fonctionnelle
+
+**Plateforme retenue : Hyperledger Fabric 2.5 (Node.js)**
+
+`Fichier : chaincode/supply-chain-contract.js` — 147 lignes, 6 fonctions
+
+**Justification du choix :**
+
+| Contrainte AGROCAM | Hyperledger Fabric | Ethereum (écarté) |
+|--------------------|--------------------|--------------------|
+| Latence réseau | Transactions < 1s (finalité immédiate) | ~12s (Ethereum) |
+| Hébergement Cameroun | On-premise ou AWS, maîtrise totale | Besoin d'infrastructure mining |
+| Budget | Gratuit (open source), pas de gas fees | Gas fees |
+| Souveraineté données (loi n°2010/012) | Données uniquement sur nœuds autorisés | Réplication publique par défaut |
+| Confidentialité | Canaux privés entre sous-ensembles de pairs | Public par défaut |
+
+**Smart contract — 6 fonctions :**
+
+| Fonction | API REST associée | Description | Ligne |
+|----------|-------------------|-------------|-------|
+| `createShipment(id, shipmentRef, origin, destination, productType, quantity, unit, carrier, status, timestamp)` | `POST /shipments` | Crée une expédition avec historique, vérifie doublon | 17-44 |
+| `updateShipmentStatus(id, newStatus, timestamp)` | `PATCH /shipments/:id` | Met à jour le statut, enregistre dans l'historique immutable | 47-65 |
+| `recordCheckpoint(id, shipmentId, location, status, notes, latitude, longitude, timestamp)` | `POST /checkpoints` | Enregistre un point de contrôle avec géolocalisation | 68-89 |
+| `getShipment(id)` | `GET /shipments/:id` | Lecture de l'état courant | 92-98 |
+| `getShipmentHistory(id)` | `GET /shipments/:id/history` | Historique complet avec txId, timestamp, valeur | 101-119 |
+| `verifyChainIntegrity(fromId, toId)` | `GET /audit/chain` | Vérifie la continuité de la chaîne entre deux expéditions | 122-138 |
+
+**Structure d'un bloc Fabric :**
+
+```
+┌────────────────────────────────────────────────────────┐
+│                        BLOCK N                         │
+├────────────────────────────────────────────────────────┤
+│  HEADER : Block Number, Previous Hash, Data Hash, TS   │
+├────────────────────────────────────────────────────────┤
+│  DATA : Transactions createShipment, recordCheckpoint   │
+├────────────────────────────────────────────────────────┤
+│  METADATA : Creator, Signature, Endorsements            │
+└────────────────────────────────────────────────────────┘
+```
+
+**Sécurisation SHA-256 + Merkle Tree :**
+- Chaque bloc contient le hash SHA-256 du bloc précédent (chaîne liée cryptographiquement)
+- Les transactions sont organisées en arbre de Merkle (vérification O(log n))
+- La racine (`Data Hash`) représente l'ensemble des transactions du bloc
+
+**Consensus Raft (pas PoW/PoS) :**
+- Leader élu parmi les orderers, propose des blocs, followers valident
+- Finalité immédiate (pas de fork possible)
+- Tolérant à la perte de nœuds (majorité requise)
+- Critique pour AGROCAM : coupures réseau fréquentes à Douala
+
+**Vulnérabilités classiques évitées :**
+
+| Vulnérabilité | Protection mise en œuvre | Ligne |
+|---------------|-------------------------|-------|
+| **Reentrancy Attack** | Pas de ressource partagée modifiable entre appels, `putState` est la dernière opération | — |
+| **Integer Overflow** | `parseFloat` + validation Joi côté API avant d'atteindre le contrat | 25, 76-77 |
+| **Time Manipulation** | Timestamp du bloc Fabric (orderer), pas du client | 24 |
+| **Access Control** | `ctx.clientIdentity.getID()` + MSP Fabric + RBAC API Gateway | 35 |
+| **Transaction Replay** | `txId` unique Fabric + `_assetExists` + dédoublonnage `offline_id` | 39-40, 85-87 |
+
+**Conformité loi n°2010/012 :**
+
+`Fichier : docs/security-report.md:611-659`
+
+| Exigence | Implémentation |
+|----------|----------------|
+| Identification | `ctx.clientIdentity.getID()` — certificat X.509 du signataire |
+| Horodatage | Timestamp signé dans chaque transaction, enregistré dans le bloc |
+| Non-répudiation | Signature Fabric + historique immutable (`getHistoryForKey`) |
+| Conservation | Données blockchain immuables par conception |
+| Journal d'accès | CloudTrail + CloudWatch Logs |
+
+### Cr26.2 — L'intégration dans le logiciel est opérationnelle
+
+**Architecture d'intégration :**
+
+```
+┌──────────────┐     ┌──────────────────┐     ┌─────────────────────┐
+│ Agent terrain │────▶│ API REST Node.js │────▶│ Hyperledger Fabric  │
+│ (app mobile)  │     │ (Express + Joi)  │     │ (Smart Contract)    │
+└──────────────┘     └──────────────────┘     └─────────────────────┘
+       │                      │                          │
+       ▼                      ▼                          ▼
+┌──────────────┐     ┌──────────────────┐     ┌─────────────────────┐
+│ Offline-first│     │ PostgreSQL (ERP)  │     │ Ledger immutable    │
+│ Redis Queue  │     │ + sync_queue     │     │ + Merkle Tree       │
+└──────────────┘     └──────────────────┘     └─────────────────────┘
+```
+
+**Client Fabric — Pont entre l'API REST et la blockchain :**
+
+`Fichier : supply-chain-service/src/blockchain/fabric.client.js` — 160 lignes
+
+| Fonction | Appel au smart contract | Gestion d'erreur |
+|----------|------------------------|------------------|
+| `connectFabric()` (l.20-40) | Initialise Gateway + Wallet + Network | Mode degradé si Fabric indisponible |
+| `recordShipmentOnChain(shipment)` (l.65-88) | `submitTransaction("createShipment", ...)` | Retour `{onChain: false, reason}` |
+| `updateShipmentStatusOnChain(id, status)` (l.93-109) | `submitTransaction("updateShipmentStatus", ...)` | Retour `{onChain: false, reason}` |
+| `recordCheckpointOnChain(checkpoint)` (l.114-135) | `submitTransaction("recordCheckpoint", ...)` | Retour `{onChain: false, reason}` |
+| `queryShipmentHistory(id)` (l.140-150) | `evaluateTransaction("getShipmentHistory", ...)` | Retour `[]` si erreur |
+
+**Mode degradé (offline-first) :**
+
+`Fichier : supply-chain-service/src/sync/sync.worker.js` — 145 lignes
+
+```
+Étape 1 — Offline (agent sans connexion)
+  ├── Données stockées localement sur le téléphone
+  └── offline_id généré côté client (UUID)
+
+Étape 2 — Sync (connexion restaurée)
+  ├── POST /api/supply-chain/sync/push
+  ├── Validation Joi (schéma strict) → rejetée si mal formée
+  ├── Enqueue Redis (LPUSH sync:queue)
+  └── HTTP 202 "Données acceptées"
+
+Étape 3 — Traitement asynchrone (sync worker)
+  ├── RPOP depuis Redis
+  ├── Dédoublonnage par offline_id (évite les INSERT en double)
+  ├── INSERT/UPDATE dans PostgreSQL
+  ├── Appel Fabric via fabric.client.js
+  │   └── submitTransaction → endorsseurs → bloc créé → txId retourné
+  └── Log dans sync_queue (table d'audit)
+
+Étape 4 — Vérification
+  ├── GET /api/supply-chain/shipments/:id/history → getHistoryForKey()
+  └── GET /api/supply-chain/audit/chain → verifyChainIntegrity()
+```
+
+**Routes de synchronisation :**
+
+`Fichier : supply-chain-service/src/routes/sync.routes.js` — 119 lignes
+
+| Endpoint | Méthode | Description | Contrôle d'accès |
+|----------|---------|-------------|------------------|
+| `/sync/push` (l.41-73) | POST | Enqueue les données offline dans Redis | Validation Joi + X-User-Id |
+| `/sync/status` (l.82-98) | GET | pending/retry/dead-letter counts | Authentification requise |
+| `/sync/flush` (l.107-117) | POST | Déclenche manuellement le flush | Admin uniquement (role === "admin") |
+
+**Extension vers un consortium international (UE) :**
+
+`Fichier : docs/security-report.md:814-907`
+
+| Problème | Solution technique |
+|----------|--------------------|
+| Souveraineté données camerounaises (loi n°2010/012) | Canaux privés Fabric — les données brutes restent sur les pairs AGROCAM |
+| Visibilité partielle pour partenaires UE | Private Data Collections (PDC) — métadonnées seulement |
+| Consensus multi-organisation | Raft étendu avec orderer par organisation |
+| Identité | MSP distincts par organisation, certificats X.509 séparés |
+| Latence intercontinentale | Timeout de bloc augmenté à 2s, Raft tolère la latence |
+| RGPD | Données personnelles jamais sur le ledger (uniquement hashs/références), CCT, PIA, DPO |
+
+**Fichiers de preuve complets :**
+
+| Preuve | Fichier | Rôle |
+|--------|---------|------|
+| Smart contract (147 lignes, 6 fonctions) | `chaincode/supply-chain-contract.js` | Traçabilité blockchain |
+| Dépendances Fabric | `chaincode/package.json` | `fabric-contract-api` |
+| Client Fabric API REST | `supply-chain-service/src/blockchain/fabric.client.js` | Pont REST → blockchain |
+| Sync worker offline-first | `supply-chain-service/src/sync/sync.worker.js` | Queue Redis, dédoublonnage, dead-letter |
+| Routes sync | `supply-chain-service/src/routes/sync.routes.js` | Endpoints push/status/flush |
+| Rapport de sécurisation complet | `docs/security-report.md` | 17 questions, 910 lignes |
+| Rapport d'activité | `docs/activity-report.md` | Membres, dates, signatures |
+
+---
+
 *CAMTECH SOLUTIONS S.A. — Projet DIGITRANS-CM — 2025/2026*
