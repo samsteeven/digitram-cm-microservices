@@ -21,7 +21,7 @@ terraform {
     key            = "digitrans-cm/terraform.tfstate"
     region         = "af-south-1"
     encrypt        = true
-    dynamodb_table = "digitrans-terraform-locks"
+    use_lockfile = true
   }
 }
 
