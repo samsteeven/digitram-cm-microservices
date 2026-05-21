@@ -50,7 +50,7 @@ resource "aws_cloudwatch_metric_alarm" "cost_spike" {
   period              = 21600
   statistic           = "Maximum"
   threshold           = 500
-  alarm_description   = "Alerte si les frais estimés dépassent \ sur 6h"
+  alarm_description   = "Alerte si les frais estimés dépassent 500$ sur 6h"
   alarm_actions       = [] # SNS topic ARN à configurer
 
   dimensions = {

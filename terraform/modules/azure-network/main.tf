@@ -1,6 +1,15 @@
 # DIGITRANS-CM — Azure Virtual Network (hub pour BI/Fabric)
 # Utilisé pour le déploiement BI Service (FastAPI) et Fabric Gateway
 
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 3.100"
+    }
+  }
+}
+
 resource "azurerm_resource_group" "main" {
   name     = "${var.project_name}-${var.environment}-rg"
   location = var.azure_location
