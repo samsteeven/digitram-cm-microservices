@@ -16,7 +16,6 @@ const { verifyToken } = require("../middleware/auth.middleware");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "8h";
-const REFRESH_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || "7d";
 
 // ─── Schémas de validation ──────────────────────────────────────────
 const loginSchema = Joi.object({

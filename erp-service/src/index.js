@@ -68,10 +68,10 @@ app.use(errorHandler);
 // ─── Démarrage ────────────────────────────────────────────────────
 async function start() {
   await connectDb();
-  console.log("✅ PostgreSQL connecté (ERP)");
+  console.warn("PostgreSQL connecté (ERP)");
   app.listen(PORT, () => {
-    console.log(`🚀 ERP Service démarré sur le port ${PORT}`);
-    console.log(`📚 Swagger : http://localhost:${PORT}/api-docs`);
+    console.warn(`ERP Service démarré sur le port ${PORT}`);
+    console.warn(`Swagger : http://localhost:${PORT}/api-docs`);
   });
 }
 

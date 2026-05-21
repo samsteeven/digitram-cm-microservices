@@ -20,7 +20,7 @@ async function connectRedis() {
 
   client.on("error", (err) => console.error("Redis error:", err.message));
   client.on("reconnecting", () => console.warn("Redis: reconnexion..."));
-  client.on("ready", () => console.log("✅ Redis prêt"));
+  client.on("ready", () => console.warn("Redis prêt"));
 
   await client.connect();
   return client;

@@ -1,6 +1,6 @@
 {
   "name": "digitrans-cm",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "AGROCAM S.A. – Architecture microservices cloud hybride (Projet DIGITRANS-CM)",
   "private": true,
   "workspaces": [
@@ -10,6 +10,8 @@
     "supply-chain-service"
   ],
   "scripts": {
+    "setup": "node scripts/copy-env.js",
+    "postinstall": "node scripts/copy-env.js",
     "dev": "concurrently \"npm run dev --workspace=auth-gateway\" \"npm run dev --workspace=erp-service\" \"npm run dev --workspace=crm-service\" \"npm run dev --workspace=supply-chain-service\"",
     "test": "npm run test --workspaces",
     "lint": "npm run lint --workspaces"

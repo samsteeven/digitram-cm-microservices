@@ -66,13 +66,13 @@ app.use(errorHandler);
 // ─── Démarrage ────────────────────────────────────────────────────
 async function start() {
   await connectDb();
-  console.log("✅ PostgreSQL connecté (CRM)");
+  console.warn("PostgreSQL connecté (CRM)");
   await connectRedis();
-  console.log("✅ Redis connecté (CRM)");
+  console.warn("Redis connecté (CRM)");
   
   app.listen(PORT, () => {
-    console.log(`🚀 CRM Service démarré sur le port ${PORT}`);
-    console.log(`📚 Swagger : http://localhost:${PORT}/api-docs`);
+    console.warn(`CRM Service démarré sur le port ${PORT}`);
+    console.warn(`Swagger : http://localhost:${PORT}/api-docs`);
   });
 }
 

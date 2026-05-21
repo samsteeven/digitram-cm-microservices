@@ -18,7 +18,7 @@ const swaggerJsdoc = require("swagger-jsdoc");
 const { connectDb } = require("../config/db");
 const { connectRedis } = require("../config/redis");
 const { startSyncWorker } = require("./sync/sync.worker");
-const { connectFabric, disconnectFabric } = require("./blockchain/fabric.client");
+const { connectFabric } = require("./blockchain/fabric.client");
 const shipmentRoutes = require("./routes/shipment.routes");
 const checkpointRoutes = require("./routes/checkpoint.routes");
 const syncRoutes = require("./routes/sync.routes");
@@ -72,19 +72,17 @@ app.use(errorHandler);
 // ─── Démarrage ────────────────────────────────────────────────────
 async function start() {
   await connectDb();
-  console.log("✅ PostgreSQL connecté (Supply Chain)");
+  console.warn("PostgreSQL connecté (Supply Chain)");
   await connectRedis();
-  console.log("✅ Redis connecté (Supply Chain)");
+  console.warn("Redis connecté (Supply Chain)");
 
-  // Connexion à Hyperledger Fabric (non-bloquante, mode degraded si indisponible)
   await connectFabric();
 
-  // Démarrer le worker de synchronisation offline-first
   startSyncWorker();
-  console.log("✅ Worker de synchronisation offline-first démarré");
+  console.warn("Worker de synchronisation offline-first démarré");
 
   app.listen(PORT, () => {
-    console.log(`🚀 Supply Chain Service démarré sur le port ${PORT}`);
+    console.warn(`Supply Chain Service démarré sur le port ${PORT}`);
   });
 }
 

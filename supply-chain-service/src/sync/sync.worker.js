@@ -34,7 +34,7 @@ async function processQueueItem(item) {
       [offline_id]
     );
     if (existing.rowCount > 0) {
-      console.log(`[SYNC] Doublon ignoré — offline_id: ${offline_id}`);
+      console.warn(`[SYNC] Doublon ignoré — offline_id: ${offline_id}`);
       return { skipped: true };
     }
   }
@@ -93,6 +93,7 @@ async function flushQueue() {
   let processed = 0;
   let errors = 0;
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const raw = await redis.rPop(QUEUE_KEY);
     if (!raw) break; // queue vide
@@ -122,7 +123,7 @@ async function flushQueue() {
   }
 
   if (processed > 0 || errors > 0) {
-    console.log(`[SYNC] Flush terminé — traités: ${processed}, erreurs: ${errors}`);
+    console.warn(`[SYNC] Flush terminé — traités: ${processed}, erreurs: ${errors}`);
   }
 }
 
@@ -130,7 +131,7 @@ async function flushQueue() {
  * Démarre le worker (boucle infinie avec intervalle configurable)
  */
 function startSyncWorker() {
-  console.log(`[SYNC] Worker démarré — intervalle: ${SYNC_INTERVAL}ms`);
+  console.warn(`[SYNC] Worker démarré — intervalle: ${SYNC_INTERVAL}ms`);
 
   // Premier flush immédiat au démarrage
   flushQueue().catch(err => console.error("[SYNC] Erreur flush initial :", err.message));

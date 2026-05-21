@@ -3,7 +3,7 @@
  * Doit être le DERNIER middleware enregistré dans Express
  */
 
-function errorHandler(err, req, res, next) {
+function errorHandler(err, req, res, _next) {
   const status = err.status || err.statusCode || 500;
   const isProduction = process.env.NODE_ENV === "production";
 

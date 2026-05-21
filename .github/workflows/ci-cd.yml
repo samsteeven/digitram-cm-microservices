@@ -58,11 +58,22 @@ jobs:
           JWT_SECRET: test_jwt_secret_32_chars_minimum_xx
         run: npm run test --workspaces --if-present
 
-  # ─── Étape 3 : Build Docker + Push ECR ────────────────────────
+  # ─── Étape 3 : Lint Python (BI Service) ──────────────────────
+  python-lint:
+    name: Python Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.14" }
+      - run: pip install ruff
+      - run: ruff check bi-service/ --line-length=120
+
+  # ─── Étape 4 : Build Docker + Push ECR ────────────────────────
   build-and-push:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, python-lint]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     strategy:
       matrix:
@@ -94,7 +105,7 @@ jobs:
           docker push ${{ env.ECR_REGISTRY }}/digitrans-${{ matrix.service }}:$ENV_TAG
           echo "image=$IMAGE_URI" >> $GITHUB_OUTPUT
 
-  # ─── Étape 4 : Deploy ECS (prod uniquement) ───────────────────
+  # ─── Étape 5 : Deploy ECS (prod uniquement) ───────────────────
   deploy-prod:
     name: Deploy to AWS ECS (Production)
     runs-on: ubuntu-latest

@@ -31,7 +31,7 @@ async function connectFabric() {
     network = await gateway.getNetwork(FABRIC_CONFIG.channelName);
     contract = network.getContract(FABRIC_CONFIG.chaincodeName);
 
-    console.log("✅ Hyperledger Fabric connecté");
+    console.warn("Hyperledger Fabric connecté");
     return true;
   } catch (err) {
     console.warn("⚠ Fabric non disponible — fonctionnement en mode degraded:", err.message);
@@ -55,7 +55,7 @@ async function disconnectFabric() {
     gateway = null;
     network = null;
     contract = null;
-    console.log("✅ Hyperledger Fabric déconnecté");
+    console.warn("Hyperledger Fabric déconnecté");
   }
 }
 
