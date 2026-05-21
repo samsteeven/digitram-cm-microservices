@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+*.log
+coverage/
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Environment files (only templates .env.dev .env.test committed)
+.env
+.env.prod
+**/.env
+!.env.dev
+!.env.test

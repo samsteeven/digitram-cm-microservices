@@ -1,0 +1,265 @@
+openapi: "3.0.0"
+info:
+  title: DIGITRANS-CM Auth Gateway
+  description: API Gateway centralisé avec authentification OAuth2/JWT et proxy vers les microservices AGROCAM S.A.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:3000
+    description: Serveur de développement
+
+paths:
+  /health:
+    get:
+      summary: Vérification de l'état du service
+      tags: [Système]
+      responses:
+        "200":
+          description: Gateway en fonctionnement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service: { type: string }
+                  status: { type: string }
+                  timestamp: { type: string, format: date-time }
+
+  /auth/login:
+    post:
+      summary: Authentification utilisateur
+      tags: [Authentification]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Authentification réussie
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        "400":
+          description: Données invalides
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          description: Credentials invalides
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      summary: Rafraîchir le token JWT
+      tags: [Authentification]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: Token rafraîchi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /auth/logout:
+    post:
+      summary: Révoquer le token JWT
+      tags: [Authentification]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Token révoqué
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
+  /auth/me:
+    get:
+      summary: Profil de l'utilisateur connecté
+      tags: [Authentification]
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Profil utilisateur
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  email: { type: string }
+                  role: { type: string }
+        "401":
+          description: Non authentifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/erp/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema: { type: string }
+    x-router:
+      service: erp-service
+      url: http://erp-service:3001
+    get:
+      summary: Proxy vers ERP Service
+      tags: [Proxy - ERP]
+      security:
+        - BearerAuth: []
+    post:
+      summary: Proxy vers ERP Service
+      tags: [Proxy - ERP]
+      security:
+        - BearerAuth: []
+    patch:
+      summary: Proxy vers ERP Service
+      tags: [Proxy - ERP]
+      security:
+        - BearerAuth: []
+    delete:
+      summary: Proxy vers ERP Service
+      tags: [Proxy - ERP]
+      security:
+        - BearerAuth: []
+
+  /api/crm/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema: { type: string }
+    x-router:
+      service: crm-service
+      url: http://crm-service:3002
+    get:
+      summary: Proxy vers CRM Service
+      tags: [Proxy - CRM]
+      security:
+        - BearerAuth: []
+    post:
+      summary: Proxy vers CRM Service
+      tags: [Proxy - CRM]
+      security:
+        - BearerAuth: []
+    patch:
+      summary: Proxy vers CRM Service
+      tags: [Proxy - CRM]
+      security:
+        - BearerAuth: []
+
+  /api/supply-chain/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema: { type: string }
+    x-router:
+      service: supply-chain-service
+      url: http://supply-chain-service:3003
+    get:
+      summary: Proxy vers Supply Chain Service
+      tags: [Proxy - Supply Chain]
+      security:
+        - BearerAuth: []
+    post:
+      summary: Proxy vers Supply Chain Service
+      tags: [Proxy - Supply Chain]
+      security:
+        - BearerAuth: []
+    patch:
+      summary: Proxy vers Supply Chain Service
+      tags: [Proxy - Supply Chain]
+      security:
+        - BearerAuth: []
+
+  /api/bi/{path}:
+    parameters:
+      - name: path
+        in: path
+        required: true
+        schema: { type: string }
+    x-router:
+      service: bi-service
+      url: http://bi-service:3004
+    get:
+      summary: Proxy vers BI Service
+      tags: [Proxy - BI]
+      security:
+        - BearerAuth: []
+    post:
+      summary: Proxy vers BI Service
+      tags: [Proxy - BI]
+      security:
+        - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@agrocam.cm
+        password:
+          type: string
+          format: password
+          example: Admin@2026!
+
+    LoginResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIs...
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          example: 28800
+        user:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            email: { type: string }
+            role: { type: string }
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Message d'erreur explicite

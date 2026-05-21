@@ -1,0 +1,188 @@
+name: DIGITRANS-CM — CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: af-south-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.af-south-1.amazonaws.com
+
+jobs:
+  # ─── Étape 1 : Lint ────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm" }
+      - run: npm ci
+      - run: npm run lint --workspaces --if-present
+
+  # ─── Étape 2 : Tests ───────────────────────────────────────────
+  test:
+    name: Tests unitaires & intégration
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: digitrans_test
+          POSTGRES_PASSWORD: digitrans_test_pwd
+          POSTGRES_DB: digitrans_test
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", cache: "npm" }
+      - run: npm ci
+      - name: Exécuter les tests
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: digitrans_test
+          DB_PASSWORD: digitrans_test_pwd
+          DB_NAME: digitrans_test
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_jwt_secret_32_chars_minimum_xx
+        run: npm run test --workspaces --if-present
+
+  # ─── Étape 3 : Build Docker + Push ECR ────────────────────────
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    strategy:
+      matrix:
+        service: [auth-gateway, erp-service, crm-service, supply-chain-service, bi-service]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & Push — ${{ matrix.service }}
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          ENV_TAG: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+        run: |
+          IMAGE_URI=${{ env.ECR_REGISTRY }}/digitrans-${{ matrix.service }}:$IMAGE_TAG
+          docker build -t $IMAGE_URI ./${{ matrix.service }}
+          docker tag $IMAGE_URI ${{ env.ECR_REGISTRY }}/digitrans-${{ matrix.service }}:$ENV_TAG
+          docker push $IMAGE_URI
+          docker push ${{ env.ECR_REGISTRY }}/digitrans-${{ matrix.service }}:$ENV_TAG
+          echo "image=$IMAGE_URI" >> $GITHUB_OUTPUT
+
+  # ─── Étape 4 : Deploy ECS (prod uniquement) ───────────────────
+  deploy-prod:
+    name: Deploy to AWS ECS (Production)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://api.digitrans-cm.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Auth Gateway to ECS
+        run: |
+          aws ecs update-service \
+            --cluster digitrans-cluster \
+            --service auth-gateway-service \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Deploy ERP Service to ECS
+        run: |
+          aws ecs update-service \
+            --cluster digitrans-cluster \
+            --service erp-service \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Deploy CRM Service to ECS
+        run: |
+          aws ecs update-service \
+            --cluster digitrans-cluster \
+            --service crm-service \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Deploy Supply Chain Service to ECS
+        run: |
+          aws ecs update-service \
+            --cluster digitrans-cluster \
+            --service supply-chain-service \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Deploy BI Service to ECS
+        run: |
+          aws ecs update-service \
+            --cluster digitrans-cluster \
+            --service bi-service \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Attendre la stabilisation
+        run: |
+          aws ecs wait services-stable \
+            --cluster digitrans-cluster \
+            --services auth-gateway-service erp-service crm-service supply-chain-service bi-service \
+            --region ${{ env.AWS_REGION }}
+          echo "✅ Déploiement stabilisé en production"
+
+  # ─── Étape 5 : Deploy ECS (staging) ───────────────────────────
+  deploy-staging:
+    name: Deploy to AWS ECS (Staging)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy all services (staging)
+        run: |
+          for svc in auth-gateway erp crm supply-chain bi; do
+            aws ecs update-service \
+              --cluster digitrans-staging-cluster \
+              --service ${svc}-service \
+              --force-new-deployment \
+              --region ${{ env.AWS_REGION }} || true
+          done
+          echo "✅ Déploiement staging déclenché"

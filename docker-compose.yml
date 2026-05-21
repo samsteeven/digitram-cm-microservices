@@ -1,0 +1,190 @@
+version: "3.9"
+
+services:
+  # ─── Infrastructure ────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: digitrans-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-digitrans}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-digitrans_dev_pwd}
+      POSTGRES_DB: ${DB_NAME:-digitrans}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - digitrans-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-digitrans}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: digitrans-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_dev_pwd}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - digitrans-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Auth Gateway ──────────────────────────────────────────────────────────
+  auth-gateway:
+    build:
+      context: ./auth-gateway
+      dockerfile: Dockerfile
+    container_name: digitrans-auth-gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3000
+      - JWT_SECRET=${JWT_SECRET:-super_secret_dev_key_change_in_prod}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-8h}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_dev_pwd}@redis:6379
+      - ERP_SERVICE_URL=http://erp-service:3001
+      - CRM_SERVICE_URL=http://crm-service:3002
+      - SUPPLY_CHAIN_SERVICE_URL=http://supply-chain-service:3003
+      - BI_SERVICE_URL=http://bi-service:3004
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - digitrans-net
+
+  # ─── ERP Service ───────────────────────────────────────────────────────────
+  erp-service:
+    build:
+      context: ./erp-service
+      dockerfile: Dockerfile
+    container_name: digitrans-erp
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3001
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-digitrans}
+      - DB_PASSWORD=${DB_PASSWORD:-digitrans_dev_pwd}
+      - DB_NAME=erp_db
+      - JWT_SECRET=${JWT_SECRET:-super_secret_dev_key_change_in_prod}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_dev_pwd}@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - digitrans-net
+
+  # ─── CRM Service ───────────────────────────────────────────────────────────
+  crm-service:
+    build:
+      context: ./crm-service
+      dockerfile: Dockerfile
+    container_name: digitrans-crm
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3002
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-digitrans}
+      - DB_PASSWORD=${DB_PASSWORD:-digitrans_dev_pwd}
+      - DB_NAME=crm_db
+      - JWT_SECRET=${JWT_SECRET:-super_secret_dev_key_change_in_prod}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_dev_pwd}@redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - digitrans-net
+
+  # ─── Supply Chain Service ──────────────────────────────────────────────────
+  supply-chain-service:
+    build:
+      context: ./supply-chain-service
+      dockerfile: Dockerfile
+    container_name: digitrans-supply-chain
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3003
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-digitrans}
+      - DB_PASSWORD=${DB_PASSWORD:-digitrans_dev_pwd}
+      - DB_NAME=supply_db
+      - JWT_SECRET=${JWT_SECRET:-super_secret_dev_key_change_in_prod}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_dev_pwd}@redis:6379
+      - SYNC_INTERVAL_MS=${SYNC_INTERVAL_MS:-30000}
+      - FABRIC_CHANNEL=${FABRIC_CHANNEL:-supplychain-channel}
+      - FABRIC_CHAINCODE=${FABRIC_CHAINCODE:-digitrans-supply}
+      - FABRIC_MSP_ID=${FABRIC_MSP_ID:-AgrocamMSP}
+      - FABRIC_PEER_ENDPOINT=${FABRIC_PEER_ENDPOINT:-fabric-peer:7051}
+      - FABRIC_CA_URL=${FABRIC_CA_URL:-https://fabric-ca:7054}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - digitrans-net
+
+  # ─── BI Service ────────────────────────────────────────────────────────────
+  bi-service:
+    build:
+      context: ./bi-service
+      dockerfile: Dockerfile
+    container_name: digitrans-bi
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3004
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-digitrans}
+      - DB_PASSWORD=${DB_PASSWORD:-digitrans_dev_pwd}
+      - DB_NAME=bi_db
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_dev_pwd}@redis:6379
+      - ERP_SERVICE_URL=http://erp-service:3001
+      - CRM_SERVICE_URL=http://crm-service:3002
+      - SUPPLY_CHAIN_SERVICE_URL=http://supply-chain-service:3003
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - digitrans-net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  digitrans-net:
+    driver: bridge
