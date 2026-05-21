@@ -1,12 +1,14 @@
 import os
+
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+
 from app.config import settings
-from app.database import connect_db, close_db
-from app.redis_client import connect_redis, close_redis
-from app.routes import kpi, dashboard
+from app.database import close_db, connect_db
 from app.middleware.user_middleware import UserMiddleware
+from app.redis_client import close_redis, connect_redis
+from app.routes import dashboard, kpi
 
 app = FastAPI(
     title="DIGITRANS-CM — BI Service API",

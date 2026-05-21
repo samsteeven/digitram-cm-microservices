@@ -1,4 +1,5 @@
 import asyncpg
+
 from app.config import settings
 
 pool = None
