@@ -62,7 +62,17 @@ module "alb" {
   domain_name      = var.domain_name
 }
 
-# ─── 7. ECS (dépend de tout ce qui précède) ──────────
+# ─── 7.1 Azure VNet (BI / Fabric) ────────────────────
+module "azure_network" {
+  source       = "./modules/azure-network"
+  providers = {
+    azurerm = azurerm.bi
+  }
+  environment  = var.environment
+  project_name = var.project_name
+}
+
+# ─── 7.2 ECS (dépend de tout ce qui précède) ──────────
 module "ecs" {
   source              = "./modules/ecs"
   environment         = var.environment

@@ -161,3 +161,37 @@ CREATE TABLE dashboard_configs (
     is_default   BOOLEAN DEFAULT FALSE,
     created_at   TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ══════════════════════════════════════════════════════════════════
+--  Index de performance (C24 — Optimisation SQL)
+--  Créés dans le contexte de chaque base
+-- ══════════════════════════════════════════════════════════════════
+
+\c erp_db;
+CREATE INDEX IF NOT EXISTS idx_accounting_entries_date     ON accounting_entries(entry_date);
+CREATE INDEX IF NOT EXISTS idx_accounting_entries_fiscal    ON accounting_entries(fiscal_year);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_date         ON purchase_orders(order_date);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status       ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_employees_department         ON employees(department);
+CREATE INDEX IF NOT EXISTS idx_employees_status             ON employees(status);
+
+\c crm_db;
+CREATE INDEX IF NOT EXISTS idx_orders_ordered_at            ON orders(ordered_at);
+CREATE INDEX IF NOT EXISTS idx_orders_customer_id           ON orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_orders_restaurant            ON orders(restaurant);
+CREATE INDEX IF NOT EXISTS idx_orders_status                ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id         ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_customers_segment            ON customers(segment);
+
+\c supply_db;
+CREATE INDEX IF NOT EXISTS idx_shipments_status             ON shipments(status);
+CREATE INDEX IF NOT EXISTS idx_shipments_departure          ON shipments(departure_date);
+CREATE INDEX IF NOT EXISTS idx_shipments_synced             ON shipments(synced);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_shipment_id      ON checkpoints(shipment_id);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_offline_id       ON checkpoints(offline_id);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_recorded_at      ON checkpoints(recorded_at);
+CREATE INDEX IF NOT EXISTS idx_sync_queue_status            ON sync_queue(status);
+
+\c bi_db;
+CREATE INDEX IF NOT EXISTS idx_kpi_snapshots_date_module    ON kpi_snapshots(snapshot_date, module);
+CREATE INDEX IF NOT EXISTS idx_kpi_snapshots_metric         ON kpi_snapshots(metric_name);

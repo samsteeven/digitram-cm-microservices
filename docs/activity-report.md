@@ -2,8 +2,8 @@
 
 **Module :** BC04/EC04 — Optimiser le SI par le Cloud Computing  
 **Projet :** DIGITRANS-CM — Transformation numérique AGROCAM S.A.  
-**Période :** [Date début] → [Date fin]  
-**Équipe :** [Nom équipe]
+**Période :** 19/05/2026 → 21/05/2026  
+**Équipe :** CAMTECH SOLUTIONS
 
 ---
 
@@ -11,9 +11,9 @@
 
 | Rôle | Nom & Prénom | Compétences principales | Tâches principales |
 |------|-------------|------------------------|-------------------|
-| **Chef de projet / Architecte** | [Nom 1] | Architecture cloud, décisions techniques | Conception architecture, coordination, validation |
-| **Développeur Backend** | [Nom 2] | Node.js, APIs REST, BDD | Développement microservices, tests unitaires |
-| **DevOps / Cloud**  | [Nom 3] | Terraform, CI/CD, Docker, K8s | IaC, pipeline CI/CD, déploiement, monitoring |
+| **Chef de projet / Architecte** | Samen | Architecture cloud, décisions techniques | Conception architecture, coordination, validation |
+| **Développeur Backend** | Youessah | Node.js, APIs REST, BDD | Développement microservices, tests unitaires |
+| **DevOps / Cloud**  | Kwitat | Terraform, CI/CD, Docker, K8s | IaC, pipeline CI/CD, déploiement, monitoring |
 
 ---
 
@@ -33,7 +33,7 @@
 
 ## 3. Répartition détaillée des tâches
 
-### [Nom 1] — Architecture & Coordination
+### Samen — Architecture & Coordination
 
 | Tâche | Techno | Effort |
 |-------|--------|--------|
@@ -44,7 +44,7 @@
 | Documentation architecture + rapport technique | Markdown, Mermaid | 3h |
 | Rédaction rapport d'activité | — | 1h |
 
-### [Nom 2] — Développement Backend
+### Youessah — Développement Backend
 
 | Tâche | Techno | Effort |
 |-------|--------|--------|
@@ -56,7 +56,7 @@
 | Tests unitaires (23 tests) | Jest, Supertest | 3h |
 | Offline-first (Redis queue, sync worker) | Redis, Fabric SDK | 2h |
 
-### [Nom 3] — DevOps & Cloud
+### Kwitat — DevOps & Cloud
 
 | Tâche | Techno | Effort |
 |-------|--------|--------|
@@ -138,8 +138,8 @@
 ---
 
 *Signatures :*  
-**[Nom 1]** _________________ &nbsp;&nbsp; **[Nom 2]** _________________ &nbsp;&nbsp; **[Nom 3]** _________________
+**Samen** _________________ &nbsp;&nbsp; **Youessah** _________________ &nbsp;&nbsp; **Kwitat** _________________
 
-*Date :* ______ / ______ / ______
+*Date :* 21 / 05 / 2026
 
 *CAMTECH SOLUTIONS S.A. — Projet DIGITRANS-CM — 2025/2026*

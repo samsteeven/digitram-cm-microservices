@@ -47,3 +47,10 @@ provider "azurerm" {
   subscription_id = var.azure_subscription_id
   tenant_id       = var.azure_tenant_id
 }
+
+provider "azurerm" {
+  alias = "bi"
+  features {}
+  subscription_id = var.azure_subscription_id
+  tenant_id       = var.azure_tenant_id
+}

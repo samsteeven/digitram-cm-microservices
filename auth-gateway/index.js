@@ -88,11 +88,11 @@ app.use(errorHandler);
 async function start() {
   try {
     await connectRedis();
-    console.log("✅ Redis connecté");
+    console.warn("✅ Redis connecté");
 
     app.listen(PORT, () => {
-      console.log(`🚀 Auth Gateway démarré sur le port ${PORT}`);
-      console.log(`📚 Swagger UI : http://localhost:${PORT}/api-docs`);
+      console.warn(`🚀 Auth Gateway démarré sur le port ${PORT}`);
+      console.warn(`📚 Swagger UI : http://localhost:${PORT}/api-docs`);
     });
   } catch (err) {
     console.error("❌ Erreur au démarrage :", err.message);
