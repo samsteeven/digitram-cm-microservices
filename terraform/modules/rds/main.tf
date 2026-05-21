@@ -1,3 +1,16 @@
+# ─── KMS Key pour chiffrement RDS ──────────────────────
+resource "aws_kms_key" "rds" {
+  description             = "KMS key for RDS ${var.project_name}-${var.environment}"
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+  tags                    = { Name = "${var.project_name}-${var.environment}-kms-rds" }
+}
+
+resource "aws_kms_alias" "rds" {
+  name          = "alias/${var.project_name}-${var.environment}-rds"
+  target_key_id = aws_kms_key.rds.key_id
+}
+
 resource "aws_db_subnet_group" "main" {
   name       = "${var.project_name}-${var.environment}-db-subnet-group"
   subnet_ids = var.private_subnet_ids
@@ -25,6 +38,7 @@ resource "aws_db_instance" "postgresql" {
   maintenance_window     = "sun:04:00-sun:05:00"
 
   storage_encrypted = true
+  kms_key_id        = aws_kms_key.rds.arn
   deletion_protection = var.environment == "prod"
 
   skip_final_snapshot = var.environment != "prod"

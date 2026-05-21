@@ -110,3 +110,64 @@ resource "aws_cloudwatch_log_metric_filter" "errors" {
     value     = "1"
   }
 }
+
+# ─── CloudTrail (audit de tous les appels API AWS) ────
+resource "aws_cloudtrail" "main" {
+  count = var.environment == "prod" ? 1 : 0
+
+  name                          = "${var.project_name}-${var.environment}-trail"
+  s3_bucket_name                = "${var.project_name}-${var.environment}-logs"
+  include_global_service_events = true
+  is_multi_region_trail         = true
+  enable_log_file_validation    = true
+
+  event_selector {
+    read_write_type           = "All"
+    include_management_events = true
+  }
+
+  tags = { Name = "${var.project_name}-${var.environment}-trail" }
+}
+
+# ─── GuardDuty (détection d'intrusions) ───────────────
+resource "aws_guardduty_detector" "main" {
+  count = var.environment == "prod" ? 1 : 0
+
+  enable                       = true
+  finding_publishing_frequency = "FIFTEEN_MINUTES"
+
+  tags = { Name = "${var.project_name}-${var.environment}-guardduty" }
+}
+
+# ─── AWS Config (enregistrement des changements de ressource) ───
+resource "aws_config_configuration_recorder" "main" {
+  count = var.environment == "prod" ? 1 : 0
+
+  name     = "${var.project_name}-${var.environment}-recorder"
+  role_arn = aws_iam_role.config[0].arn
+
+  recording_group {
+    all_supported                 = true
+    include_global_resource_types = true
+  }
+}
+
+resource "aws_iam_role" "config" {
+  count = var.environment == "prod" ? 1 : 0
+  name  = "${var.project_name}-${var.environment}-config-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = { Service = "config.amazonaws.com" }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "config" {
+  count      = var.environment == "prod" ? 1 : 0
+  role       = aws_iam_role.config[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSConfigRole"
+}

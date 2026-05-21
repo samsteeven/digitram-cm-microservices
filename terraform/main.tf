@@ -95,3 +95,19 @@ module "ecs" {
   cpu_target_tracking = var.cpu_target_tracking
   alb_listener_arn    = module.alb.alb_listener_arn
 }
+
+# ─── 7.3 Secrets Manager ─────────────────────────────
+resource "aws_secretsmanager_secret" "db_password" {
+  name                    = "${var.project_name}-${var.environment}-db-password"
+  description             = "Mot de passe PostgreSQL DIGITRANS-CM ${var.environment}"
+  recovery_window_in_days = var.environment == "prod" ? 30 : 0
+  tags = {
+    Name       = "${var.project_name}-${var.environment}-db-password"
+    Rotation   = "90-days"
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "db_password" {
+  secret_id     = aws_secretsmanager_secret.db_password.id
+  secret_string = var.db_password
+}
