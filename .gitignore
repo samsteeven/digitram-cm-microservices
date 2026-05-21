@@ -15,6 +15,17 @@ venv/
 .idea/
 .vscode/
 
+# Terraform
+terraform/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+.terraformrc
+terraform.rc
+
 # Environment files (only templates .env.dev .env.test committed)
 .env
 .env.prod
